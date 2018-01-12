@@ -4,13 +4,14 @@ import argparse
 import logging
 import os
 import sys
+import stat
 
 
 log = logging.getLogger(__name__)
 log_hdlr = logging.StreamHandler(sys.stdout)
 log_hdlr.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
 log.addHandler(log_hdlr)
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 
 OS_USER = os.getlogin()
 MEDIA_DIR = os.path.join('/media', OS_USER)
@@ -19,6 +20,8 @@ FS_DIR = os.path.join(MEDIA_DIR, 'rootfs')
 SSH_BOOT_FILE = os.path.join(BOOT_DIR, 'ssh')
 WPA_SUPPLICANT_DIR = os.path.join(FS_DIR, 'etc', 'wpa_supplicant')
 WPA_SUPPLICANT_FILE = os.path.join(WPA_SUPPLICANT_DIR, 'wpa_supplicant.conf')
+PI_USER_UID = 1000
+PI_USER_GID = 1000
 
 WPA_SUPPLICANT_CONF = u"""
 country=GB
@@ -53,6 +56,10 @@ def write_wpa_supplicant(ssid=None, password=None):
 
 
 def copy_auth_key(src=None, dest=None):
+    """Copies the content of src and appends it to dest.
+    If the destination path does not exist, it is created with +rwx for directories
+    and +rw for files.
+    """
     src = os.path.expanduser(src)
     dest = (os.path.join(FS_DIR, dest)
             if not os.path.isabs(dest)
@@ -64,19 +71,27 @@ def copy_auth_key(src=None, dest=None):
         if not os.path.isdir(dest_dir):
             os.makedirs(dest_dir)
             log.debug('Created {}'.format(dest_dir))
-            os.chown(dest_dir, os.getuid(), -1)
+            os.chown(dest_dir, PI_USER_UID, PI_USER_GID)
+            log.debug('Setting ownership on {}'.format(dest_dir))
+            os.chmod(dest_dir, stat.S_IRWXU)
             log.debug('Setting permissions on {}'.format(dest_dir))
         with open(src, 'r') as f:
             src_f = f.read()
         with open(dest, 'a') as f:
-            dest_f = f.write(src_f)
-        os.chown(dest, os.getuid(), -1)
+            f.write(src_f)
+        os.chown(dest, PI_USER_UID, PI_USER_GID)
+        log.debug('Setting ownership on {}'.format(dest))
+        os.chmod(dest, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        log.debug('Setting permissions on {}'.format(dest))
         log.info('Copied contents of "{}" to "{}"'.format(src, dest))
     except IOError as e:
         log.exception('You must be sudo when running this script!')
+        exit(1)
 
 
 def main(args):
+    if args.verbose:
+        log.setLevel(logging.DEBUG)
     log.info('Starting new headless configuration')
     touch_ssh_file()
     write_wpa_supplicant(ssid=args.ssid, password=args.password)
@@ -90,6 +105,7 @@ if __name__ == "__main__":
     parser.add_argument('--ssid', required= True, help="Network SSID")
     parser.add_argument('--password', required=True, help='Network password')
     parser.add_argument('--auth-key', required=False, nargs=2, help='Authorized hosts SSH key, paths must be absolute')
+    parser.add_argument('-v', '--verbose', action='store_true', required=False, help='Enable verbose mode')
     args = parser.parse_args()
     
     main(args)
