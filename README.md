@@ -18,7 +18,11 @@ Assert that the SD card is available under `/media/$USER`. Follow the next steps
 $ sudo ./rpi_headless.py --ssid <WiFI_name> --password <WiFi_password>
 ```
 
-The card can now be unmounted and extracted. Boot the RaspberryPi and you should be able to SSH into it. If you have trouble finding the RaspberryPi IP, `nmap` can com in handy.
+The card can now be unmounted and extracted. Boot the RaspberryPi and you should be able to SSH into it. If you have trouble finding the RaspberryPi IP, `nmap` can come in handy issuing a command like so:
+
+```bash
+nmap -sn 192.168.1.0/24
+```
 
 ### Optional
 
