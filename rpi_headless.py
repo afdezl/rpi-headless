@@ -20,6 +20,8 @@ FS_DIR = os.path.join(MEDIA_DIR, 'rootfs')
 SSH_BOOT_FILE = os.path.join(BOOT_DIR, 'ssh')
 WPA_SUPPLICANT_DIR = os.path.join(FS_DIR, 'etc', 'wpa_supplicant')
 WPA_SUPPLICANT_FILE = os.path.join(WPA_SUPPLICANT_DIR, 'wpa_supplicant.conf')
+NETWORK_INTERFACES_DIR = os.path.join(FS_DIR, 'etc', 'network')
+NETWORK_INTERFACES_FILE = os.path.join(NETWORK_INTERFACES_DIR, 'interfaces')
 PI_USER_UID = 1000
 PI_USER_GID = 1000
 
@@ -34,6 +36,20 @@ network={{
 }}
 """
 
+INTERFACES_CONF = u"""
+auto lo
+iface lo inet loopback
+
+auto eth0
+allow-hotplug eth0
+iface eth0 inet dhcp
+
+allow-hotplug wlan0
+iface wlan0 inet manual
+wpa-roam /etc/wpa_supplicant/wpa_supplicant.conf
+iface default inet dhcp
+"""
+
 
 def touch_ssh_file():
     """Touches an empty file called ssh in the boot directory to enable SSH on boot."""
@@ -44,9 +60,24 @@ def touch_ssh_file():
         log.info('File already present "{}", skipping'.format(SSH_BOOT_FILE))
 
 
+def write_network_interfaces():
+    try:
+        log.debug('Backing up existing interfaces config to {}'.format(NETWORK_INTERFACES_FILE + '.old'))
+        os.rename(NETWORK_INTERFACES_FILE, NETWORK_INTERFACES_FILE + '.old')
+        open(NETWORK_INTERFACES_FILE, 'a').close()
+        with open(NETWORK_INTERFACES_FILE, 'w') as f:
+            f.write(INTERFACES_CONF)
+        log.info('Edited "{}"'.format(NETWORK_INTERFACES_FILE))
+    except IOError as e:
+        log.exception(e)
+        exit(1)
+
+
 def write_wpa_supplicant(ssid=None, password=None):
     """Writes a new wpa_suplicant.conf file with the required  network SSID and password."""
     try:
+        if not os.path.isfile(WPA_SUPPLICANT_FILE):
+            open(WPA_SUPPLICANT_FILE, 'a').close()
         with open(WPA_SUPPLICANT_FILE, 'w') as f:
             f.write(WPA_SUPPLICANT_CONF.format(ssid=ssid, password=password))
         log.info('Edited "{}"'.format(WPA_SUPPLICANT_FILE))
@@ -93,7 +124,10 @@ def main(args):
     if args.verbose:
         log.setLevel(logging.DEBUG)
     log.info('Starting new headless configuration')
-    touch_ssh_file()
+    if args.os == 'raspbian':
+        touch_ssh_file()
+    if args.os == 'armbian':
+        write_network_interfaces()
     write_wpa_supplicant(ssid=args.ssid, password=args.password)
     if args.auth_key:
         copy_auth_key(src=args.auth_key[0], dest=args.auth_key[1])
@@ -105,7 +139,8 @@ if __name__ == "__main__":
     parser.add_argument('--ssid', required= True, help="Network SSID")
     parser.add_argument('--password', required=True, help='Network password')
     parser.add_argument('--auth-key', required=False, nargs=2, help='Authorized hosts SSH key, paths must be absolute')
+    parser.add_argument('--os', required=False, nargs=1, default='raspbian', choices=['raspbian', 'armbian'])
     parser.add_argument('-v', '--verbose', action='store_true', required=False, help='Enable verbose mode')
     args = parser.parse_args()
-    
+
     main(args)
